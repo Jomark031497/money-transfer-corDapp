@@ -2,13 +2,14 @@ package com.template.flows
 
 import co.paralleluniverse.fibers.Suspendable
 import com.template.contracts.IOUContract
-import com.template.states.IOUState
+import com.template.states.MoneyTransferState
 import net.corda.core.contracts.Amount
 import net.corda.core.contracts.Command
 import net.corda.core.contracts.UniqueIdentifier
 import net.corda.core.contracts.requireThat
 import net.corda.core.flows.*
 import net.corda.core.identity.Party
+import net.corda.core.node.StatesToRecord
 import net.corda.core.transactions.SignedTransaction
 import net.corda.core.transactions.TransactionBuilder
 import java.util.*
@@ -16,15 +17,16 @@ import java.util.*
 @InitiatingFlow
 @StartableByRPC
 class IssueCashFlow(
-    val phpBalancePeso: Amount<Currency>,
-    val usdBalancePeso: Amount<Currency>,
-    val phpBalanceUSD: Amount<Currency>,
-    val usdBalanceUSD: Amount<Currency>,
-    val counterParty: Party
+    private val phpBalancePeso: Amount<Currency>,
+    private val usdBalancePeso: Amount<Currency>,
+    private val phpBalanceUSD: Amount<Currency>,
+    private val usdBalanceUSD: Amount<Currency>,
+    private val counterParty: Party,
+    private val observer: Party
 ) : FlowLogic<SignedTransaction>() {
 
-    private fun iouStates(): IOUState {
-        return IOUState(
+    private fun states(): MoneyTransferState {
+        return MoneyTransferState(
             linearId = UniqueIdentifier(),
             participants = listOf(ourIdentity, counterParty),
             phpBalance = listOf(usdBalancePeso, phpBalancePeso),
@@ -34,38 +36,30 @@ class IssueCashFlow(
 
     @Suspendable
     override fun call(): SignedTransaction {
-
-        val transaction: TransactionBuilder = transaction(iouStates())
-        val signedTransaction: SignedTransaction = verifyAndSign(transaction)
-        val sessions: List<FlowSession> =
-            (iouStates().participants - ourIdentity).map { initiateFlow(it) }.toSet().toList()
-        val transactionSignedByAllParties: SignedTransaction = collectSignature(signedTransaction, sessions)
-        return recordTransaction(transactionSignedByAllParties, sessions)
-    }
-
-    private fun transaction(state: IOUState): TransactionBuilder {
+        // Obtain a reference from a notary we wish to use.
         val notary: Party = serviceHub.networkMapCache.notaryIdentities.first()
-        val issueCommand = Command(IOUContract.Commands.Issue(), state.participants.map { it.owningKey })
-        val builder = TransactionBuilder(notary = notary)
-        builder.addOutputState(state, IOUContract.IOU_CONTRACT_ID)
-        builder.addCommand(issueCommand)
-        return builder
+
+        // Generate an unsigned transaction.
+        val issueCommand = Command(IOUContract.Commands.Issue(), states().participants.map { it.owningKey })
+        val txBuilder = TransactionBuilder(notary = notary)
+        txBuilder
+            .addOutputState(states(), IOUContract.IOU_CONTRACT_ID)
+            .addCommand(issueCommand)
+
+        // Verify transaction
+        txBuilder.verify(serviceHub)
+
+        // Sign the transaction.
+        val partSignedTx = serviceHub.signInitialTransaction(txBuilder)
+
+        // Send the state to the counterparty, and receive it back with their signature.
+        val counterPartySession = initiateFlow(counterParty)
+
+        val fullySignedTx = subFlow(CollectSignaturesFlow(partSignedTx, setOf(counterPartySession)))
+
+        // Notarise and record the transaction in both parties' vaults.
+        return subFlow(FinalityFlow(fullySignedTx, counterPartySession))
     }
-
-    private fun verifyAndSign(transaction: TransactionBuilder): SignedTransaction {
-        transaction.verify(serviceHub)
-        return serviceHub.signInitialTransaction(transaction)
-    }
-
-    @Suspendable
-    fun collectSignature(
-        transaction: SignedTransaction,
-        sessions: List<FlowSession>
-    ): SignedTransaction = subFlow(CollectSignaturesFlow(transaction, sessions))
-
-    @Suspendable
-    fun recordTransaction(transaction: SignedTransaction, sessions: List<FlowSession>): SignedTransaction =
-        subFlow(FinalityFlow(transaction, sessions))
 }
 
 @InitiatedBy(IssueCashFlow::class)
@@ -74,9 +68,18 @@ class IssueCashResponder(val flowSession: FlowSession) : FlowLogic<SignedTransac
     override fun call(): SignedTransaction {
         val signTransactionFlow = object : SignTransactionFlow(flowSession) {
             override fun checkTransaction(stx: SignedTransaction) = requireThat {
+                val output = stx.tx.outputs.single().data
+                "This must be an IOU transaction." using (output is MoneyTransferState)
             }
         }
-        val signedTransaction = subFlow(signTransactionFlow)
-        return subFlow(ReceiveFinalityFlow(otherSideSession = flowSession, expectedTxId = signedTransaction.id))
+
+        val txId = subFlow(signTransactionFlow).id
+        return subFlow(
+            ReceiveFinalityFlow(
+                otherSideSession = flowSession,
+                expectedTxId = txId,
+                statesToRecord = StatesToRecord.ALL_VISIBLE
+            )
+        )
     }
 }

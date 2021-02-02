@@ -1,6 +1,5 @@
 package com.template.contracts
 
-import com.template.states.IOUState
 import net.corda.core.contracts.*
 import net.corda.core.transactions.LedgerTransaction
 
@@ -21,7 +20,7 @@ class IOUContract : Contract {
     }
 
     override fun verify(tx: LedgerTransaction) {
-        val command = tx.commands.requireSingleCommand<IOUContract.Commands>()
+        val command = tx.commands.requireSingleCommand<Commands>()
         when (command.value) {
             is Commands.Issue -> requireThat {
 
