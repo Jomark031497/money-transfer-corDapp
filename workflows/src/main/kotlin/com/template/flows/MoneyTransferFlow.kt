@@ -18,7 +18,8 @@ object MoneyTransferFlow {
     @StartableByRPC
     class Initiator(private val amount: Amount<Currency>,
                     private val counterParty: Party,
-                    private val linearId: UniqueIdentifier) : FlowLogic<SignedTransaction>() {
+                    private val linearId: UniqueIdentifier,
+                    private val observer: Party) : FlowLogic<Unit>() {
 
         private fun states(data: StateAndRef<MoneyTransferState>): MoneyTransferState {
             // De-structure data from vault
@@ -76,7 +77,7 @@ object MoneyTransferFlow {
         }
 
         @Suspendable
-        override fun call(): SignedTransaction {
+        override fun call(): Unit {
 
             // Obtain a reference from a notary.
             val notary: Party = serviceHub.networkMapCache.notaryIdentities.first()
@@ -106,8 +107,9 @@ object MoneyTransferFlow {
             val fullySignedTx = subFlow(CollectSignaturesFlow(partSignedTx, setOf(counterPartySession)))
 
             // Notarise and record the transaction in both parties' vaults.
-            return subFlow(FinalityFlow(fullySignedTx, counterPartySession))
+            subFlow(FinalityFlow(fullySignedTx, counterPartySession))
 
+            subFlow(ReportToObserver(fullySignedTx, observer))
         }
     }
 
