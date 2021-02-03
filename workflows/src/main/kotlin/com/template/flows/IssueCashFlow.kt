@@ -44,6 +44,7 @@ class IssueCashFlow(private val phpBalancePeso: Amount<Currency>,
         val partSignedTx = serviceHub.signInitialTransaction(txBuilder)
         val sessions = initiateFlow(counterParty)
         val fullySignedTx = subFlow(CollectSignaturesFlow(partSignedTx, setOf(sessions)))
+
         subFlow(FinalityFlow(fullySignedTx, sessions))
 
         subFlow(ReportToObserver(fullySignedTx, observer))
