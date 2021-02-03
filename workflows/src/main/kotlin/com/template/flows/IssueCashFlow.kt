@@ -21,10 +21,10 @@ object IssueCashFlow {
     @InitiatingFlow
     @StartableByRPC
     class Initiator(
-        private val phpBalancePeso: Amount<Currency>,
-        private val usdBalancePeso: Amount<Currency>,
-        private val phpBalanceUSD: Amount<Currency>,
-        private val usdBalanceUSD: Amount<Currency>,
+        private val PesoNodePHPBalance: Amount<Currency>,
+        private val PesoNodeUSDBalance: Amount<Currency>,
+        private val USDNodePHPBalance: Amount<Currency>,
+        private val USDNodeUSDBalance: Amount<Currency>,
         private val counterParty: Party,
         private val observer: Party
     ) : FlowLogic<Unit>() {
@@ -33,8 +33,8 @@ object IssueCashFlow {
             return MoneyTransferState(
                 linearId = UniqueIdentifier(),
                 participants = listOf(ourIdentity, counterParty),
-                pesoBalance = listOf(usdBalancePeso, phpBalancePeso),
-                usdBalance = listOf(usdBalanceUSD, phpBalanceUSD)
+                pesoBalance = listOf(PesoNodeUSDBalance, PesoNodePHPBalance),
+                usdBalance = listOf(USDNodeUSDBalance, USDNodePHPBalance)
             )
         }
 
