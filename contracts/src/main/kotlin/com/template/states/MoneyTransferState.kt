@@ -10,6 +10,6 @@ import java.util.*
 
 @BelongsToContract(IOUContract::class)
 data class MoneyTransferState(val usdBalance: List<Amount<Currency>>,
-                              val phpBalance: List<Amount<Currency>>,
+                              val pesoBalance: List<Amount<Currency>>,
                               override val linearId: UniqueIdentifier,
                               override val participants: List<Party>) : LinearState

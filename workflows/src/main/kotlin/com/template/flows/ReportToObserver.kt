@@ -11,7 +11,8 @@ import net.corda.core.transactions.SignedTransaction
 import net.corda.core.utilities.unwrap
 
 @InitiatingFlow
-class ReportToObserver(val signedTransaction: SignedTransaction, val observer: Party): FlowLogic<Unit>() {
+class ReportToObserver(private val signedTransaction: SignedTransaction, private val observer: Party) :
+    FlowLogic<Unit>() {
     @Suspendable
     override fun call() {
         val session = initiateFlow(observer)
@@ -20,7 +21,7 @@ class ReportToObserver(val signedTransaction: SignedTransaction, val observer: P
 }
 
 @InitiatedBy(ReportToObserver::class)
-class ReportManuallyResponder(val counterpartySession: FlowSession) : FlowLogic<Unit>() {
+class ReportManuallyResponder(private val counterpartySession: FlowSession) : FlowLogic<Unit>() {
     @Suspendable
     override fun call() {
         val signedTransaction = counterpartySession.receive<SignedTransaction>().unwrap { it }

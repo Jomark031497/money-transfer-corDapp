@@ -16,10 +16,12 @@ object MoneyTransferFlow {
 
     @InitiatingFlow
     @StartableByRPC
-    class Initiator(private val amount: Amount<Currency>,
-                    private val counterParty: Party,
-                    private val linearId: UniqueIdentifier,
-                    private val observer: Party) : FlowLogic<Unit>() {
+    class Initiator(
+        private val amount: Amount<Currency>,
+        private val counterParty: Party,
+        private val linearId: UniqueIdentifier,
+        private val observer: Party
+    ) : FlowLogic<Unit>() {
 
         private fun states(data: StateAndRef<MoneyTransferState>): MoneyTransferState {
             // De-structure data from vault
@@ -27,7 +29,7 @@ object MoneyTransferFlow {
             // Current State
             var myState = MoneyTransferState(
                 usdBalance = data.usdBalance,
-                phpBalance = data.phpBalance,
+                pesoBalance = data.pesoBalance,
                 linearId = linearId,
                 participants = listOf(ourIdentity, counterParty)
             )
@@ -37,16 +39,14 @@ object MoneyTransferFlow {
                     if (amount.toString().contains("USD")) {
                         myState = MoneyTransferState(
                             usdBalance = listOf(data.usdBalance[0] - amount, data.usdBalance[1]),
-                            phpBalance = listOf(data.phpBalance[0] + amount, data.phpBalance[1]),
+                            pesoBalance = listOf(data.pesoBalance[0] + amount, data.pesoBalance[1]),
                             linearId = linearId,
                             participants = listOf(ourIdentity, counterParty)
                         )
-                    }
-
-                    else if (amount.toString().contains("PHP")) {
+                    } else if (amount.toString().contains("PHP")) {
                         myState = MoneyTransferState(
                             usdBalance = listOf(data.usdBalance[0], data.usdBalance[1] - amount),
-                            phpBalance = listOf(data.phpBalance[0], data.phpBalance[1] + amount),
+                            pesoBalance = listOf(data.pesoBalance[0], data.pesoBalance[1] + amount),
                             linearId = linearId,
                             participants = listOf(ourIdentity, counterParty)
                         )
@@ -57,16 +57,14 @@ object MoneyTransferFlow {
                     if (amount.toString().contains("USD")) {
                         myState = MoneyTransferState(
                             usdBalance = listOf(data.usdBalance[0] + amount, data.usdBalance[1]),
-                            phpBalance = listOf(data.phpBalance[0] - amount, data.phpBalance[1]),
+                            pesoBalance = listOf(data.pesoBalance[0] - amount, data.pesoBalance[1]),
                             linearId = linearId,
                             participants = listOf(ourIdentity, counterParty)
                         )
-                    }
-
-                    else if (amount.toString().contains("PHP")) {
+                    } else if (amount.toString().contains("PHP")) {
                         myState = MoneyTransferState(
                             usdBalance = listOf(data.usdBalance[0], data.usdBalance[1] + amount),
-                            phpBalance = listOf(data.phpBalance[0], data.phpBalance[1] - amount),
+                            pesoBalance = listOf(data.pesoBalance[0], data.pesoBalance[1] - amount),
                             linearId = linearId,
                             participants = listOf(ourIdentity, counterParty)
                         )
@@ -87,7 +85,8 @@ object MoneyTransferFlow {
             val currentData = serviceHub.vaultService.queryBy<MoneyTransferState>(queryCriteria).states.single()
 
             // Generate an unsigned transaction.
-            val issueCommand = Command(IOUContract.Commands.Issue(), states(currentData).participants.map { it.owningKey })
+            val issueCommand =
+                Command(IOUContract.Commands.Issue(), states(currentData).participants.map { it.owningKey })
             val txBuilder = TransactionBuilder(notary = notary)
             txBuilder
                 .addInputState(currentData)
@@ -109,6 +108,7 @@ object MoneyTransferFlow {
             // Notarise and record the transaction in both parties' vaults.
             subFlow(FinalityFlow(fullySignedTx, counterPartySession))
 
+            // Inform the observer about the transaction
             subFlow(ReportToObserver(fullySignedTx, observer))
         }
     }
